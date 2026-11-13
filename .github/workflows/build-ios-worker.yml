@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Check out PrivateLM source
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
