@@ -20,6 +20,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Select Xcode 26.1.1 (required by device_info_plus 12.4.0)
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.1.1.app/Contents/Developer
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
