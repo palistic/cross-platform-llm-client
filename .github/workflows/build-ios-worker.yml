@@ -1,0 +1,85 @@
+name: Build PrivateLM iOS Worker IPA
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios-worker:
+    name: Build iPad/iPhone worker IPA
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      COCOAPODS_DISABLE_STATS: "true"
+
+    steps:
+      - name: Check out PrivateLM source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install iOS build tools
+        run: brew install cmake ninja cocoapods
+
+      - name: Show build tool versions
+        run: |
+          xcodebuild -version
+          flutter --version
+          cmake --version
+          ninja --version
+          pod --version
+
+      - name: Resolve Flutter packages
+        run: flutter pub get
+
+      - name: Build llama.cpp for iOS Metal and RPC
+        run: |
+          bash local_plugins/llama_flutter_android/scripts/build_llama_ios.sh
+          test -s local_plugins/llama_flutter_android/ios/llama_ios/lib/libllama_ios.a
+
+      - name: Install iOS CocoaPods
+        run: cd ios && pod install --repo-update
+
+      - name: Build unsigned iOS app
+        run: >-
+          flutter build ios
+          --release
+          --no-codesign
+          --build-name=1.0.7
+          --build-number=7001
+
+      - name: Ad-hoc sign and package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/ios/iphoneos/Runner.app"
+          test -d "$APP"
+
+          # AltStore will re-sign this app with the user's Apple ID.
+          # Keep the app's declared entitlements in the unsigned build package.
+          codesign --force --deep --sign - \
+            --entitlements ios/Runner/Runner.entitlements \
+            "$APP"
+          codesign --verify --deep --strict "$APP"
+
+          mkdir -p dist Payload
+          ditto "$APP" Payload/Runner.app
+          ditto -c -k --sequesterRsrc --keepParent Payload \
+            dist/PrivateLM-iOS-worker-1.0.7.ipa
+
+          unzip -l dist/PrivateLM-iOS-worker-1.0.7.ipa | grep 'Payload/Runner.app/Info.plist'
+          codesign -d --entitlements :- "$APP" 2>&1 | grep -A2 -B1 'com.apple.developer.kernel.increased-memory-limit'
+
+      - name: Upload iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrivateLM-iOS-worker-1.0.7
+          path: dist/PrivateLM-iOS-worker-1.0.7.ipa
+          if-no-files-found: error
+          retention-days: 7
